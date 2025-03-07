@@ -2,6 +2,9 @@ import streamlit as st
 from datetime import datetime, timedelta
 import json, os
 
+# Llamada a set_page_config debe ser la primera salida de Streamlit
+st.set_page_config(page_title="Deva Timer Compartido", layout="centered")
+
 # Inyectar CSS para botones estilizados
 st.markdown("""
 <style>
@@ -50,7 +53,6 @@ def save_shared_state(data):
         json.dump(data_to_save, f)
 
 # Configuración de la app
-st.set_page_config(page_title="Deva Timer Compartido", layout="centered")
 st.title("Deva Timer Compartido")
 st.markdown("""
 Esta herramienta permite a tu grupo ver y agregar tiempos para buscar bosses.
