@@ -2,7 +2,7 @@ import streamlit as st
 from datetime import datetime, timedelta
 import json, os
 
-# Configuración de la página (siempre debe ir antes de cualquier salida)
+# Configuración de la página (debe ir antes de cualquier salida)
 st.set_page_config(page_title="Deva Timer Compartido", layout="centered")
 
 # Inyección de CSS para personalizar botones y reducir márgenes, con media queries para móviles
@@ -46,7 +46,6 @@ def load_shared_state():
                 except Exception:
                     ch["timer"] = None
     else:
-        # Inicialmente, creamos un único canal vacío
         data = {"channels": [{"number": None, "timer": None, "mode": None}]}
         save_shared_state(data)
     return data
@@ -60,8 +59,6 @@ def save_shared_state(data):
         json.dump(data_to_save, f)
 
 def get_available_options(idx, channels):
-    """Devuelve la lista de números (1 a 30) que no están usados en otros canales.
-       Si el canal actual no tiene número, se asigna el menor disponible."""
     used = set()
     current = channels[idx].get("number")
     for i, ch in enumerate(channels):
@@ -77,15 +74,13 @@ def get_available_options(idx, channels):
     options.sort()
     return options
 
-def format_time_delta(td):
-    """Devuelve el tiempo restante en formato mm:ss con fuente grande; si se agotó, muestra '¡Listo!' en rojo."""
+def format_time_delta(td, color="black"):
     total_seconds = int(td.total_seconds())
     if total_seconds <= 0:
         return '<span style="color:red; font-size:2em;">¡Listo!</span>'
     minutes, seconds = divmod(total_seconds, 60)
-    return f"<span style='font-size:2em;'>{minutes:02d}:{seconds:02d}</span>"
+    return f'<span style="color:{color}; font-size:2em;">{minutes:02d}:{seconds:02d}</span>'
 
-# Título y descripción (instrucciones)
 st.title("Deva Timer Compartido")
 st.markdown("""
 Esta herramienta permite a tu grupo ver y agregar tiempos para buscar bosses. Los cambios se comparten en tiempo real (se actualiza cada segundo). Cuando muera un boss solo marca el que mataste para mantener un registro del tiempo.
@@ -98,7 +93,7 @@ try:
 except ImportError:
     st.warning("Para auto-refresh, instala 'streamlit-autorefresh' o actualiza manualmente la página.")
 
-# Cargar el estado compartido y asegurarse de que haya sólo un canal vacío al final
+# Cargar estado compartido y ajustar la lista de canales
 data = load_shared_state()
 channels = data["channels"]
 
@@ -109,24 +104,17 @@ if empty_channels:
 else:
     empty_channel = {"number": None, "timer": None, "mode": None}
 channels = used_channels + [empty_channel]
-# Si el último canal ya está en uso, agregamos un nuevo canal vacío
 if channels and channels[-1]["timer"] is not None:
     channels.append({"number": None, "timer": None, "mode": None})
 data["channels"] = channels
 save_shared_state(data)
 
-# Mostrar cada canal (dinámico)
 for idx, ch in enumerate(channels):
-    # Si el canal está en modo "deva_spawn", le agregamos un borde verde
-    container_style = "padding: 5px; margin-bottom: 5px;"
-    if ch.get("mode") == "deva_spawn":
-        container_style = "border: 2px solid green; padding: 5px; margin-bottom: 5px;"
-    st.markdown(f"<div style='{container_style}'>", unsafe_allow_html=True)
+    # No se marca el contenedor; el cambio de color se hará en el contador
+    st.markdown("<div style='padding:5px; margin-bottom:5px;'>", unsafe_allow_html=True)
     
-    # Dividimos en dos columnas: izquierda para selector y botones, derecha para mostrar tiempo
     col_left, col_right = st.columns([3, 2])
     with col_left:
-        # Menú desplegable para seleccionar el número de canal
         options = get_available_options(idx, channels)
         current_val = ch.get("number")
         try:
@@ -138,24 +126,35 @@ for idx, ch in enumerate(channels):
             ch["number"] = selected
             save_shared_state(data)
         
-        # Fila de botones, justo debajo del selector, en el siguiente orden:
-        # "Deva", "Deva Spawn", "Deva Mutante" y "Quitar"
         btn_cols = st.columns(4)
+        # Botón "Deva" (5 min)
         with btn_cols[0]:
             if st.button("Deva", key=f"deva_{idx}"):
+                was_empty = (ch["timer"] is None)
                 ch["timer"] = datetime.now() + timedelta(minutes=5)
                 ch["mode"] = "deva"
                 save_shared_state(data)
+                if was_empty and idx == len(channels) - 1:
+                    st.experimental_rerun()
+        # Botón "Deva Spawn" (2 min, cuenta en verde)
         with btn_cols[1]:
             if st.button("Deva Spawn", key=f"deva_spawn_{idx}"):
+                was_empty = (ch["timer"] is None)
                 ch["timer"] = datetime.now() + timedelta(minutes=2)
                 ch["mode"] = "deva_spawn"
                 save_shared_state(data)
+                if was_empty and idx == len(channels) - 1:
+                    st.experimental_rerun()
+        # Botón "Deva Mutante" (8 min)
         with btn_cols[2]:
             if st.button("Deva Mutante", key=f"deva_mutante_{idx}"):
+                was_empty = (ch["timer"] is None)
                 ch["timer"] = datetime.now() + timedelta(minutes=8)
                 ch["mode"] = "deva_mut"
                 save_shared_state(data)
+                if was_empty and idx == len(channels) - 1:
+                    st.experimental_rerun()
+        # Botón "Quitar"
         with btn_cols[3]:
             if st.button("Quitar", key=f"quitar_{idx}"):
                 if len(channels) > 1:
@@ -167,6 +166,9 @@ for idx, ch in enumerate(channels):
             st.markdown("<span style='font-size:2em;'>Sin timer</span>", unsafe_allow_html=True)
         else:
             remaining = ch["timer"] - datetime.now()
-            st.markdown(format_time_delta(remaining), unsafe_allow_html=True)
+            if ch.get("mode") == "deva_spawn":
+                st.markdown(format_time_delta(remaining, color="green"), unsafe_allow_html=True)
+            else:
+                st.markdown(format_time_delta(remaining), unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
