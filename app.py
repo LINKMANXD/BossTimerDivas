@@ -74,12 +74,12 @@ def get_available_options(idx, channels):
     options.sort()
     return options
 
-def format_time_delta(td, color="black"):
+def format_time_delta(td, color="white"):
     total_seconds = int(td.total_seconds())
     if total_seconds <= 0:
         return '<span style="color:red; font-size:2em;">¡Listo!</span>'
     minutes, seconds = divmod(total_seconds, 60)
-    return f'<span style="color:{color}; font-size:2em;">{minutes:02d}:{seconds:02d}</span>'
+    return f"<span style='color:{color}; font-size:2em;'>{minutes:02d}:{seconds:02d}</span>"
 
 st.title("Deva Timer Compartido")
 st.markdown("""
@@ -110,7 +110,6 @@ data["channels"] = channels
 save_shared_state(data)
 
 for idx, ch in enumerate(channels):
-    # No se marca el contenedor; el cambio de color se hará en el contador
     st.markdown("<div style='padding:5px; margin-bottom:5px;'>", unsafe_allow_html=True)
     
     col_left, col_right = st.columns([3, 2])
@@ -127,7 +126,7 @@ for idx, ch in enumerate(channels):
             save_shared_state(data)
         
         btn_cols = st.columns(4)
-        # Botón "Deva" (5 min)
+        # Botón "Deva" (5 min) -> Temporizador en blanco
         with btn_cols[0]:
             if st.button("Deva", key=f"deva_{idx}"):
                 was_empty = (ch["timer"] is None)
@@ -136,7 +135,7 @@ for idx, ch in enumerate(channels):
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
-        # Botón "Deva Spawn" (2 min, cuenta en verde)
+        # Botón "Deva Spawn" (2 min) -> Temporizador en amarillo
         with btn_cols[1]:
             if st.button("Deva Spawn", key=f"deva_spawn_{idx}"):
                 was_empty = (ch["timer"] is None)
@@ -145,7 +144,7 @@ for idx, ch in enumerate(channels):
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
-        # Botón "Deva Mutante" (8 min)
+        # Botón "Deva Mutante" (8 min) -> Temporizador en blanco
         with btn_cols[2]:
             if st.button("Deva Mutante", key=f"deva_mutante_{idx}"):
                 was_empty = (ch["timer"] is None)
@@ -167,8 +166,8 @@ for idx, ch in enumerate(channels):
         else:
             remaining = ch["timer"] - datetime.now()
             if ch.get("mode") == "deva_spawn":
-                st.markdown(format_time_delta(remaining, color="green"), unsafe_allow_html=True)
+                st.markdown(format_time_delta(remaining, color="yellow"), unsafe_allow_html=True)
             else:
-                st.markdown(format_time_delta(remaining), unsafe_allow_html=True)
+                st.markdown(format_time_delta(remaining, color="white"), unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
