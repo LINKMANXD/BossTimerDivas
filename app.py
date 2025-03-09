@@ -5,7 +5,6 @@ from filelock import FileLock
 
 # --- Configuración de la página y CSS global ---
 st.set_page_config(page_title="Deva Timer Compartido By LINKMANXD", layout="centered")
-# Reducir margen superior para que el contenido quede pegado al tope
 st.markdown("""
 <style>
 body { margin-top: 0px; }
@@ -49,7 +48,7 @@ h1 { margin-top: 5px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Variables y funciones para persistencia ---
+# --- Variables y funciones de persistencia ---
 SHARED_FILE = "shared_timers.json"
 LOCK_FILE = SHARED_FILE + ".lock"
 
@@ -122,25 +121,28 @@ def format_time_delta(td, color="white"):
     minutes, seconds = divmod(total_seconds, 60)
     return f"<span style='color:{color}; font-size:2em;'>{minutes:02d}:{seconds:02d}</span>"
 
-# --- Función para eliminar canales expirados ---
 def clean_expired_channels(data):
+    """Elimina canales cuyo temporizador llegó a cero y han pasado 40 segundos sin interacción.
+       Si el canal expiró y no tiene registrada una interacción post-expiración, se asume
+       que el usuario no interactuó y se borra."""
     now = datetime.now()
     nuevos = []
     for ch in data["channels"]:
-        # Si el canal tiene un timer establecido y ya expiró
-        if ch["timer"] is not None and ch.get("last_interaction") is not None:
-            if ch["timer"] <= now and (now - ch["last_interaction"]) > timedelta(seconds=40):
-                # Omitir este canal (se borra)
+        if ch["timer"] is not None and ch["timer"] <= now:
+            # Si no se ha registrado una interacción posterior a la expiración,
+            # se utiliza la hora de expiración como base.
+            base_time = ch.get("last_interaction") or ch["timer"]
+            # Si han pasado más de 40 segundos desde la expiración (o desde la interacción post-expiración), omitir el canal.
+            if (now - base_time) > timedelta(seconds=40):
                 continue
         nuevos.append(ch)
-    # Siempre garantizar que al menos exista UN canal vacío
+    # Siempre garantizar que exista al menos un canal vacío.
     if not any(ch["timer"] is None for ch in nuevos):
         nuevos.append({"number": None, "timer": None, "mode": None, "last_interaction": None})
     data["channels"] = nuevos
     save_shared_state(data)
     return data
 
-# --- Función para renderizar cada canal ---
 def render_channel(ch, idx, channels, data):
     with st.container():
         st.markdown("<div class='channel-container'>", unsafe_allow_html=True)
@@ -156,7 +158,7 @@ def render_channel(ch, idx, channels, data):
             ch["number"] = selected
             ch["last_interaction"] = datetime.now()
             save_shared_state(data)
-        # Fila de botones: "Deva", "Deva Spawn", "Deva Mutant", "Quitar"
+        # Botones en fila: "Deva", "Deva Spawn", "Deva Mutant", "Quitar"
         btn_cols = st.columns(4)
         with btn_cols[0]:
             if st.button("Deva", key=f"deva_{idx}"):
@@ -177,7 +179,6 @@ def render_channel(ch, idx, channels, data):
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
         with btn_cols[2]:
-            # Botón "Deva Mutant" con color amarillo claro
             if st.button("Deva Mutant", key=f"deva_mutant_{idx}"):
                 was_empty = (ch["timer"] is None)
                 ch["timer"] = datetime.now() + timedelta(minutes=8)
@@ -192,7 +193,7 @@ def render_channel(ch, idx, channels, data):
                     data["channels"].pop(idx)
                     save_shared_state(data)
                     st.experimental_rerun()
-        # Mostrar el temporizador
+        # Mostrar temporizador
         if ch["timer"] is None:
             st.markdown("<span style='font-size:2em;'>Sin timer</span>", unsafe_allow_html=True)
         else:
@@ -200,7 +201,6 @@ def render_channel(ch, idx, channels, data):
             if ch.get("mode") == "deva_spawn":
                 st.markdown(format_time_delta(remaining, color="yellow"), unsafe_allow_html=True)
             else:
-                # Para Deva y Deva Mutant se muestra en blanco
                 st.markdown(format_time_delta(remaining, color="white"), unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
@@ -243,3 +243,4 @@ for i in range(0, len(channels), 2):
         if idx < len(channels):
             with col:
                 render_channel(channels[idx], idx, channels, data)
+
