@@ -7,8 +7,19 @@ from filelock import FileLock
 st.set_page_config(page_title="Deva Timer Compartido By LINKMANXD", layout="centered")
 st.markdown("""
 <style>
-body { margin-top: 0px; }
-h1 { margin-top: 5px; }
+/* Fondo oscuro para toda la página */
+body {
+    background-color: #222;
+    color: white;
+    margin-top: 0px;
+}
+
+/* Reducir margen superior de los títulos */
+h1 {
+    margin-top: 5px;
+}
+
+/* Botones personalizados con márgenes reducidos */
 .green-button button {
     background-color: white;
     border: 2px solid green !important;
@@ -33,11 +44,15 @@ h1 { margin-top: 5px; }
     margin: 2px !important;
     padding: 0.25em 0.5em !important;
 }
+
+/* Asegurar que los botones ocupen todo el ancho en móviles */
 @media (max-width: 600px) {
     .green-button button, .purple-button button, .lightyellow-button button {
         width: 100% !important;
     }
 }
+
+/* Contenedor compacto para cada canal */
 .channel-container {
     display: block;
     padding: 4px;
@@ -123,20 +138,18 @@ def format_time_delta(td, color="white"):
 
 def clean_expired_channels(data):
     """Elimina canales cuyo temporizador llegó a cero y han pasado 40 segundos sin interacción
-       después de la expiración. Se toma como referencia la hora de expiración o la última interacción
-       registrada (si ocurrió después de la expiración)."""
+       (después de la expiración). Se toma como referencia la hora de expiración o la última interacción
+       registrada posterior a la expiración."""
     now = datetime.now()
     nuevos = []
     for ch in data["channels"]:
         if ch["timer"] is not None and now > ch["timer"]:
-            # Establecer ref_time: si hubo interacción posterior a la expiración, se usa esa, sino la hora de expiración.
             ref_time = ch["timer"]
             if ch.get("last_interaction") is not None and ch["last_interaction"] > ch["timer"]:
                 ref_time = ch["last_interaction"]
             if (now - ref_time) > timedelta(seconds=40):
-                continue  # Eliminar canal si han pasado más de 40 segundos sin interacción
+                continue
         nuevos.append(ch)
-    # Siempre garantizar que exista al menos UN canal vacío.
     if not any(ch["timer"] is None for ch in nuevos):
         nuevos.append({"number": None, "timer": None, "mode": None, "last_interaction": None})
     data["channels"] = nuevos
@@ -146,18 +159,23 @@ def clean_expired_channels(data):
 def render_channel(ch, idx, channels, data):
     with st.container():
         st.markdown("<div class='channel-container'>", unsafe_allow_html=True)
-        # Selector de canal
-        options = get_available_options(idx, channels)
-        current_val = ch.get("number")
-        try:
-            default_index = options.index(current_val)
-        except ValueError:
-            default_index = 0
-        selected = st.selectbox("Canal", options, index=default_index, key=f"channel_select_{idx}")
-        if selected != ch.get("number"):
-            ch["number"] = selected
-            ch["last_interaction"] = datetime.now()
-            save_shared_state(data)
+        # Mostrar "Canal:" y el menú en la misma línea usando dos columnas pequeñas
+        label_cols = st.columns([1, 2])
+        with label_cols[0]:
+            st.markdown("<div style='line-height:1.8;'>Canal:</div>", unsafe_allow_html=True)
+        with label_cols[1]:
+            options = get_available_options(idx, channels)
+            current_val = ch.get("number")
+            try:
+                default_index = options.index(current_val)
+            except ValueError:
+                default_index = 0
+            # Selectbox sin etiqueta para que quede en la misma línea
+            selected = st.selectbox("", options, index=default_index, key=f"channel_select_{idx}")
+            if selected != ch.get("number"):
+                ch["number"] = selected
+                ch["last_interaction"] = datetime.now()
+                save_shared_state(data)
         # Botones en fila: "Deva", "Deva Spawn", "Deva Mutant", "Quitar"
         btn_cols = st.columns(4)
         with btn_cols[0]:
@@ -243,5 +261,4 @@ for i in range(0, len(channels), 2):
         if idx < len(channels):
             with col:
                 render_channel(channels[idx], idx, channels, data)
-
 
