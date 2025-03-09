@@ -159,10 +159,11 @@ def clean_expired_channels(data):
 def render_channel(ch, idx, channels, data):
     with st.container():
         st.markdown("<div class='channel-container'>", unsafe_allow_html=True)
-        # Mostrar "Canal:" y el menú en la misma línea usando dos columnas pequeñas
-        label_cols = st.columns([1, 2])
+
+        # Mostrar "Canal:" y el menú en la misma línea usando 2 columnas con gap="small"
+        label_cols = st.columns([1, 4], gap="small")
         with label_cols[0]:
-            st.markdown("<div style='line-height:1.8;'>Canal:</div>", unsafe_allow_html=True)
+            st.markdown("**Canal:**", unsafe_allow_html=True)
         with label_cols[1]:
             options = get_available_options(idx, channels)
             current_val = ch.get("number")
@@ -170,13 +171,14 @@ def render_channel(ch, idx, channels, data):
                 default_index = options.index(current_val)
             except ValueError:
                 default_index = 0
-            # Selectbox sin etiqueta para que quede en la misma línea
-            selected = st.selectbox("", options, index=default_index, key=f"channel_select_{idx}")
-            if selected != ch.get("number"):
+            # Selectbox sin etiqueta, para que quede en la misma línea
+            selected = st.selectbox("", options, index=default_index, key=f"channel_select_{idx}", label_visibility="collapsed")
+            if selected != ch["number"]:
                 ch["number"] = selected
                 ch["last_interaction"] = datetime.now()
                 save_shared_state(data)
-        # Botones en fila: "Deva", "Deva Spawn", "Deva Mutant", "Quitar"
+
+        # Fila de botones: "Deva", "Deva Spawn", "Deva Mutant", "Quitar"
         btn_cols = st.columns(4)
         with btn_cols[0]:
             if st.button("Deva", key=f"deva_{idx}"):
@@ -211,6 +213,7 @@ def render_channel(ch, idx, channels, data):
                     data["channels"].pop(idx)
                     save_shared_state(data)
                     st.experimental_rerun()
+
         # Mostrar el temporizador
         if ch["timer"] is None:
             st.markdown("<span style='font-size:2em;'>Sin timer</span>", unsafe_allow_html=True)
@@ -220,6 +223,7 @@ def render_channel(ch, idx, channels, data):
                 st.markdown(format_time_delta(remaining, color="yellow"), unsafe_allow_html=True)
             else:
                 st.markdown(format_time_delta(remaining, color="white"), unsafe_allow_html=True)
+
         st.markdown("</div>", unsafe_allow_html=True)
 
 # --- Título e instrucciones ---
@@ -261,4 +265,3 @@ for i in range(0, len(channels), 2):
         if idx < len(channels):
             with col:
                 render_channel(channels[idx], idx, channels, data)
-
