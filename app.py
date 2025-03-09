@@ -37,8 +37,16 @@ SHARED_FILE = "shared_timers.json"
 
 def load_shared_state():
     if os.path.exists(SHARED_FILE):
-        with open(SHARED_FILE, "r") as f:
-            data = json.load(f)
+        try:
+            with open(SHARED_FILE, "r") as f:
+                content = f.read().strip()
+                if content == "":
+                    raise ValueError("Archivo vacío")
+                data = json.loads(content)
+        except (json.JSONDecodeError, ValueError) as e:
+            st.error("Error al leer el estado compartido. Se reiniciará el estado.")
+            data = {"channels": [{"number": None, "timer": None, "mode": None}]}
+            save_shared_state(data)
         for ch in data["channels"]:
             if ch["timer"] is not None:
                 try:
@@ -93,7 +101,6 @@ try:
 except ImportError:
     st.warning("Para auto-refresh, instala 'streamlit-autorefresh' o actualiza manualmente la página.")
 
-# Cargar estado compartido y ajustar la lista de canales
 data = load_shared_state()
 channels = data["channels"]
 
@@ -126,7 +133,6 @@ for idx, ch in enumerate(channels):
             save_shared_state(data)
         
         btn_cols = st.columns(4)
-        # Botón "Deva" (5 min) -> Temporizador en blanco
         with btn_cols[0]:
             if st.button("Deva", key=f"deva_{idx}"):
                 was_empty = (ch["timer"] is None)
@@ -135,7 +141,6 @@ for idx, ch in enumerate(channels):
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
-        # Botón "Deva Spawn" (2 min) -> Temporizador en amarillo
         with btn_cols[1]:
             if st.button("Deva Spawn", key=f"deva_spawn_{idx}"):
                 was_empty = (ch["timer"] is None)
@@ -144,7 +149,6 @@ for idx, ch in enumerate(channels):
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
-        # Botón "Deva Mutante" (8 min) -> Temporizador en blanco
         with btn_cols[2]:
             if st.button("Deva Mutante", key=f"deva_mutante_{idx}"):
                 was_empty = (ch["timer"] is None)
@@ -153,7 +157,6 @@ for idx, ch in enumerate(channels):
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
-        # Botón "Quitar"
         with btn_cols[3]:
             if st.button("Quitar", key=f"quitar_{idx}"):
                 if len(channels) > 1:
