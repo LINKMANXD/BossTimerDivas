@@ -3,13 +3,13 @@ from datetime import datetime, timedelta
 import json, os
 from filelock import FileLock
 
-# Configuración de la página (debe ir antes de cualquier salida)
-st.set_page_config(page_title="Deva Timer Compartido", layout="centered")
-
-# Inyectar CSS para botones y contenedores compactos (incluye media queries para móviles)
+# --- Configuración de la página y CSS global ---
+st.set_page_config(page_title="Deva Timer Compartido By LINKMANXD", layout="centered")
+# Reducir margen superior para que el contenido quede pegado al tope
 st.markdown("""
 <style>
-/* Botones personalizados con márgenes reducidos */
+body { margin-top: 0px; }
+h1 { margin-top: 5px; }
 .green-button button {
     background-color: white;
     border: 2px solid green !important;
@@ -26,13 +26,19 @@ st.markdown("""
     margin: 2px !important;
     padding: 0.25em 0.5em !important;
 }
-/* Ajuste para dispositivos móviles */
+.lightyellow-button button {
+    background-color: white;
+    border: 2px solid #FFFF99 !important;
+    color: #B59B00 !important;
+    font-weight: bold;
+    margin: 2px !important;
+    padding: 0.25em 0.5em !important;
+}
 @media (max-width: 600px) {
-    .green-button button, .purple-button button {
+    .green-button button, .purple-button button, .lightyellow-button button {
         width: 100% !important;
     }
 }
-/* Contenedor compacto para cada canal */
 .channel-container {
     display: block;
     padding: 4px;
@@ -43,13 +49,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Archivo que almacenará el estado compartido
+# --- Variables y funciones para persistencia ---
 SHARED_FILE = "shared_timers.json"
 LOCK_FILE = SHARED_FILE + ".lock"
 
 def load_shared_state():
-    """Carga el estado compartido de forma segura usando filelock.
-       Si hay error de lectura o el archivo está vacío/corrupto, se reinicializa."""
     lock = FileLock(LOCK_FILE)
     with lock:
         if os.path.exists(SHARED_FILE):
@@ -61,33 +65,41 @@ def load_shared_state():
                     data = json.loads(content)
             except (json.JSONDecodeError, ValueError) as e:
                 st.error("Error al leer el estado compartido. Se reinicializará el estado.")
-                data = {"channels": [{"number": None, "timer": None, "mode": None}]}
+                data = {"channels": [{"number": None, "timer": None, "mode": None, "last_interaction": None}]}
                 save_shared_state(data)
         else:
-            data = {"channels": [{"number": None, "timer": None, "mode": None}]}
+            data = {"channels": [{"number": None, "timer": None, "mode": None, "last_interaction": None}]}
             save_shared_state(data)
-    # Convertir timer a datetime
     for ch in data["channels"]:
         if ch["timer"] is not None:
             try:
                 ch["timer"] = datetime.fromisoformat(ch["timer"])
             except Exception:
                 ch["timer"] = None
+        if ch.get("last_interaction") is not None:
+            try:
+                ch["last_interaction"] = datetime.fromisoformat(ch["last_interaction"])
+            except Exception:
+                ch["last_interaction"] = None
     return data
 
 def save_shared_state(data):
-    """Guarda el estado compartido de forma segura usando filelock."""
     data_to_save = {"channels": []}
     for ch in data["channels"]:
         timer_val = ch["timer"].isoformat() if ch["timer"] is not None and isinstance(ch["timer"], datetime) else None
-        data_to_save["channels"].append({"number": ch["number"], "timer": timer_val, "mode": ch.get("mode")})
+        li_val = ch["last_interaction"].isoformat() if ch.get("last_interaction") is not None and isinstance(ch["last_interaction"], datetime) else None
+        data_to_save["channels"].append({
+            "number": ch["number"],
+            "timer": timer_val,
+            "mode": ch.get("mode"),
+            "last_interaction": li_val
+        })
     lock = FileLock(LOCK_FILE)
     with lock:
         with open(SHARED_FILE, "w") as f:
             json.dump(data_to_save, f)
 
 def get_available_options(idx, channels):
-    """Devuelve la lista de números (1 a 30) disponibles para el canal idx, sin repetir."""
     used = set()
     current = channels[idx].get("number")
     for i, ch in enumerate(channels):
@@ -104,18 +116,34 @@ def get_available_options(idx, channels):
     return options
 
 def format_time_delta(td, color="white"):
-    """Devuelve el tiempo restante en formato mm:ss con fuente grande; si se agota, muestra '¡Listo!' en rojo."""
     total_seconds = int(td.total_seconds())
     if total_seconds <= 0:
         return '<span style="color:red; font-size:2em;">¡Listo!</span>'
     minutes, seconds = divmod(total_seconds, 60)
     return f"<span style='color:{color}; font-size:2em;'>{minutes:02d}:{seconds:02d}</span>"
 
+# --- Función para eliminar canales expirados ---
+def clean_expired_channels(data):
+    now = datetime.now()
+    nuevos = []
+    for ch in data["channels"]:
+        # Si el canal tiene un timer establecido y ya expiró
+        if ch["timer"] is not None and ch.get("last_interaction") is not None:
+            if ch["timer"] <= now and (now - ch["last_interaction"]) > timedelta(seconds=40):
+                # Omitir este canal (se borra)
+                continue
+        nuevos.append(ch)
+    # Siempre garantizar que al menos exista UN canal vacío
+    if not any(ch["timer"] is None for ch in nuevos):
+        nuevos.append({"number": None, "timer": None, "mode": None, "last_interaction": None})
+    data["channels"] = nuevos
+    save_shared_state(data)
+    return data
+
+# --- Función para renderizar cada canal ---
 def render_channel(ch, idx, channels, data):
-    """Renderiza una 'tarjeta' compacta para un canal."""
     with st.container():
-        st.markdown(f"<div class='channel-container'>", unsafe_allow_html=True)
-        
+        st.markdown("<div class='channel-container'>", unsafe_allow_html=True)
         # Selector de canal
         options = get_available_options(idx, channels)
         current_val = ch.get("number")
@@ -126,15 +154,16 @@ def render_channel(ch, idx, channels, data):
         selected = st.selectbox("Canal", options, index=default_index, key=f"channel_select_{idx}")
         if selected != ch.get("number"):
             ch["number"] = selected
+            ch["last_interaction"] = datetime.now()
             save_shared_state(data)
-        
-        # Fila de botones en orden: Deva, Deva Spawn, Deva Mutante, Quitar
+        # Fila de botones: "Deva", "Deva Spawn", "Deva Mutant", "Quitar"
         btn_cols = st.columns(4)
         with btn_cols[0]:
             if st.button("Deva", key=f"deva_{idx}"):
                 was_empty = (ch["timer"] is None)
                 ch["timer"] = datetime.now() + timedelta(minutes=5)
                 ch["mode"] = "deva"
+                ch["last_interaction"] = datetime.now()
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
@@ -143,14 +172,17 @@ def render_channel(ch, idx, channels, data):
                 was_empty = (ch["timer"] is None)
                 ch["timer"] = datetime.now() + timedelta(minutes=2)
                 ch["mode"] = "deva_spawn"
+                ch["last_interaction"] = datetime.now()
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
         with btn_cols[2]:
-            if st.button("Deva Mutante", key=f"deva_mutante_{idx}"):
+            # Botón "Deva Mutant" con color amarillo claro
+            if st.button("Deva Mutant", key=f"deva_mutant_{idx}"):
                 was_empty = (ch["timer"] is None)
                 ch["timer"] = datetime.now() + timedelta(minutes=8)
                 ch["mode"] = "deva_mut"
+                ch["last_interaction"] = datetime.now()
                 save_shared_state(data)
                 if was_empty and idx == len(channels) - 1:
                     st.experimental_rerun()
@@ -160,7 +192,6 @@ def render_channel(ch, idx, channels, data):
                     data["channels"].pop(idx)
                     save_shared_state(data)
                     st.experimental_rerun()
-        
         # Mostrar el temporizador
         if ch["timer"] is None:
             st.markdown("<span style='font-size:2em;'>Sin timer</span>", unsafe_allow_html=True)
@@ -169,42 +200,42 @@ def render_channel(ch, idx, channels, data):
             if ch.get("mode") == "deva_spawn":
                 st.markdown(format_time_delta(remaining, color="yellow"), unsafe_allow_html=True)
             else:
+                # Para Deva y Deva Mutant se muestra en blanco
                 st.markdown(format_time_delta(remaining, color="white"), unsafe_allow_html=True)
-        
         st.markdown("</div>", unsafe_allow_html=True)
 
-# Título y descripción
-st.title("Deva Timer Compartido")
+# --- Título e instrucciones ---
+st.title("Deva Timer Compartido By LINKMANXD")
 st.markdown("""
-Esta herramienta permite a tu grupo ver y agregar tiempos para buscar bosses. Los cambios se comparten en tiempo real (se actualiza cada segundo). Cuando muera un boss solo marca el que mataste para mantener un registro del tiempo.
+Selecciona el canal y cuál boss es el que murió. Usa el botón Deva spawn para marcar la llegada del mutante en el canal.
 """)
 
-# Auto-refresh cada 1 segundo para actualizar el conteo
+# --- Auto-refresh cada 1 segundo ---
 try:
     from streamlit_autorefresh import st_autorefresh
     st_autorefresh(interval=1000, limit=10000, key="frescador")
 except ImportError:
     st.warning("Para auto-refresh, instala 'streamlit-autorefresh' o actualiza manualmente la página.")
 
-# Cargar estado compartido
+# --- Cargar y limpiar estado compartido ---
 data = load_shared_state()
+data = clean_expired_channels(data)
 channels = data["channels"]
 
-# Ajuste dinámico de la lista de canales:
-# Se muestran todos los canales usados, y se garantiza que siempre exista al menos UN canal vacío.
+# --- Ajuste dinámico de canales ---
 used_channels = [ch for ch in channels if ch["timer"] is not None]
 empty_channels = [ch for ch in channels if ch["timer"] is None]
 if empty_channels:
     empty_channel = empty_channels[0]
 else:
-    empty_channel = {"number": None, "timer": None, "mode": None}
+    empty_channel = {"number": None, "timer": None, "mode": None, "last_interaction": None}
 channels = used_channels + [empty_channel]
 if channels and channels[-1]["timer"] is not None:
-    channels.append({"number": None, "timer": None, "mode": None})
+    channels.append({"number": None, "timer": None, "mode": None, "last_interaction": None})
 data["channels"] = channels
 save_shared_state(data)
 
-# Mostrar los canales en un layout en dos columnas para mayor compacidad
+# --- Renderizar canales en dos columnas para mayor compacidad ---
 for i in range(0, len(channels), 2):
     cols = st.columns(2)
     for j, col in enumerate(cols):
