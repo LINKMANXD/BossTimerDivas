@@ -48,7 +48,7 @@ h1 { margin-top: 5px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- Variables y funciones de persistencia ---
+# --- Variables y funciones para persistencia ---
 SHARED_FILE = "shared_timers.json"
 LOCK_FILE = SHARED_FILE + ".lock"
 
@@ -122,21 +122,21 @@ def format_time_delta(td, color="white"):
     return f"<span style='color:{color}; font-size:2em;'>{minutes:02d}:{seconds:02d}</span>"
 
 def clean_expired_channels(data):
-    """Elimina canales cuyo temporizador llegó a cero y han pasado 40 segundos sin interacción.
-       Si el canal expiró y no tiene registrada una interacción post-expiración, se asume
-       que el usuario no interactuó y se borra."""
+    """Elimina canales cuyo temporizador llegó a cero y han pasado 40 segundos sin interacción
+       después de la expiración. Se toma como referencia la hora de expiración o la última interacción
+       registrada (si ocurrió después de la expiración)."""
     now = datetime.now()
     nuevos = []
     for ch in data["channels"]:
-        if ch["timer"] is not None and ch["timer"] <= now:
-            # Si no se ha registrado una interacción posterior a la expiración,
-            # se utiliza la hora de expiración como base.
-            base_time = ch.get("last_interaction") or ch["timer"]
-            # Si han pasado más de 40 segundos desde la expiración (o desde la interacción post-expiración), omitir el canal.
-            if (now - base_time) > timedelta(seconds=40):
-                continue
+        if ch["timer"] is not None and now > ch["timer"]:
+            # Establecer ref_time: si hubo interacción posterior a la expiración, se usa esa, sino la hora de expiración.
+            ref_time = ch["timer"]
+            if ch.get("last_interaction") is not None and ch["last_interaction"] > ch["timer"]:
+                ref_time = ch["last_interaction"]
+            if (now - ref_time) > timedelta(seconds=40):
+                continue  # Eliminar canal si han pasado más de 40 segundos sin interacción
         nuevos.append(ch)
-    # Siempre garantizar que exista al menos un canal vacío.
+    # Siempre garantizar que exista al menos UN canal vacío.
     if not any(ch["timer"] is None for ch in nuevos):
         nuevos.append({"number": None, "timer": None, "mode": None, "last_interaction": None})
     data["channels"] = nuevos
@@ -193,7 +193,7 @@ def render_channel(ch, idx, channels, data):
                     data["channels"].pop(idx)
                     save_shared_state(data)
                     st.experimental_rerun()
-        # Mostrar temporizador
+        # Mostrar el temporizador
         if ch["timer"] is None:
             st.markdown("<span style='font-size:2em;'>Sin timer</span>", unsafe_allow_html=True)
         else:
@@ -222,7 +222,7 @@ data = load_shared_state()
 data = clean_expired_channels(data)
 channels = data["channels"]
 
-# --- Ajuste dinámico de canales ---
+# --- Ajuste dinámico de canales: mostrar usados y al menos un canal vacío ---
 used_channels = [ch for ch in channels if ch["timer"] is not None]
 empty_channels = [ch for ch in channels if ch["timer"] is None]
 if empty_channels:
@@ -243,4 +243,5 @@ for i in range(0, len(channels), 2):
         if idx < len(channels):
             with col:
                 render_channel(channels[idx], idx, channels, data)
+
 
